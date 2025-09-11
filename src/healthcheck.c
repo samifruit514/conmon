@@ -166,18 +166,19 @@ bool healthcheck_init(void) {
 /* Cleanup healthcheck subsystem */
 void healthcheck_cleanup(void) {
     if (active_healthcheck_timers != NULL) {
-        /* Free all timers */
+        /* Free all timers first */
         for (size_t i = 0; i < active_healthcheck_timers->size; i++) {
             struct hash_entry *entry = active_healthcheck_timers->buckets[i];
             while (entry) {
-                struct hash_entry *next = entry->next;
-                healthcheck_timer_free((healthcheck_timer_t*)entry->value);
-                free(entry->key);
-                free(entry);
-                entry = next;
+                if (entry->value != NULL) {
+                    healthcheck_timer_free((healthcheck_timer_t*)entry->value);
+                    entry->value = NULL;  /* Prevent double-free */
+                }
+                entry = entry->next;
             }
         }
         
+        /* Now free the hash table structure */
         hash_table_free(active_healthcheck_timers);
         active_healthcheck_timers = NULL;
     }
@@ -276,17 +277,28 @@ void healthcheck_timer_free(healthcheck_timer_t *timer) {
         return;
     }
     
+    /* Stop the timer if it's still active */
     if (timer->timer_active) {
         healthcheck_timer_stop(timer);
     }
     
-    free(timer->container_id);
+    /* Free container ID */
+    if (timer->container_id != NULL) {
+        free(timer->container_id);
+        timer->container_id = NULL;
+    }
+    
+    /* Free test command array */
     if (timer->config.test != NULL) {
         for (int i = 0; timer->config.test[i] != NULL; i++) {
             free(timer->config.test[i]);
         }
         free(timer->config.test);
+        timer->config.test = NULL;
     }
+    
+    /* Clear the timer structure to prevent double-free */
+    memset(timer, 0, sizeof(healthcheck_timer_t));
     free(timer);
 }
 
@@ -321,8 +333,12 @@ void healthcheck_timer_stop(healthcheck_timer_t *timer) {
     timer->timer_active = false;
     timer->status = HEALTHCHECK_NONE;
     
-    /* Wait for the timer thread to finish */
-    pthread_join(timer->timer_thread, NULL);
+    /* Wait for the timer thread to finish with a timeout */
+    void *thread_result;
+    int join_result = pthread_join(timer->timer_thread, &thread_result);
+    if (join_result != 0) {
+        nwarnf("Failed to join healthcheck timer thread: %s", strerror(join_result));
+    }
 }
 
 /* Check if timer is active */
@@ -541,52 +557,64 @@ void *healthcheck_timer_thread(void *user_data) {
         return NULL;
     }
     
-    while (timer->timer_active) {
-        /* Sleep for the interval */
-        sleep(timer->config.interval);
+    /* Make a local copy of the timer pointer to avoid race conditions */
+    healthcheck_timer_t *local_timer = timer;
+    
+    while (local_timer->timer_active) {
+        /* Sleep for the interval, but check timer_active periodically */
+        int sleep_time = local_timer->config.interval;
+        while (sleep_time > 0 && local_timer->timer_active) {
+            if (sleep_time > 1) {
+                sleep(1);  /* Sleep 1 second at a time */
+                sleep_time -= 1;
+            } else {
+                sleep(sleep_time);
+                sleep_time = 0;
+            }
+        }
         
-        if (!timer->timer_active) {
+        if (!local_timer->timer_active) {
             break;
         }
         
         /* Check if we're still in start period */
-        if (timer->start_period_remaining > 0) {
-            timer->start_period_remaining -= timer->config.interval;
-            if (timer->start_period_remaining > 0) {
+        if (local_timer->start_period_remaining > 0) {
+            local_timer->start_period_remaining -= local_timer->config.interval;
+            if (local_timer->start_period_remaining > 0) {
                 continue;
             }
         }
         
         /* Execute healthcheck command */
         int exit_code;
-        bool success = healthcheck_execute_command(&timer->config, &exit_code);
+        bool success = healthcheck_execute_command(&local_timer->config, &exit_code);
         
         if (!success) {
-            nwarnf("Failed to execute healthcheck command for container %s", timer->container_id);
-            timer->consecutive_failures++;
-            timer->status = HEALTHCHECK_UNHEALTHY;
-            healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            nwarnf("Failed to execute healthcheck command for container %s", local_timer->container_id);
+            local_timer->consecutive_failures++;
+            local_timer->status = HEALTHCHECK_UNHEALTHY;
+            healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
             continue;
         }
         
         /* Check if healthcheck passed */
         if (exit_code == 0) {
             /* Healthcheck passed */
-            timer->consecutive_failures = 0;
-            if (timer->status != HEALTHCHECK_HEALTHY) {
-                timer->status = HEALTHCHECK_HEALTHY;
-                healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            local_timer->consecutive_failures = 0;
+            if (local_timer->status != HEALTHCHECK_HEALTHY) {
+                local_timer->status = HEALTHCHECK_HEALTHY;
+                healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
             }
         } else {
             /* Healthcheck failed */
-            timer->consecutive_failures++;
-            if (timer->consecutive_failures >= timer->config.retries) {
-                timer->status = HEALTHCHECK_UNHEALTHY;
-                healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            local_timer->consecutive_failures++;
+            if (local_timer->consecutive_failures >= local_timer->config.retries) {
+                local_timer->status = HEALTHCHECK_UNHEALTHY;
+                healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
             }
         }
         
-        timer->last_check_time = time(NULL);
+        local_timer->last_check_time = time(NULL);
     }
     
     return NULL;
