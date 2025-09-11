@@ -25,7 +25,7 @@ else
 	$(eval GIT_BRANCH_CLEAN := unknown)
 endif
 
-override LIBS += $(shell $(PKG_CONFIG) --libs glib-2.0) -lpthread $(shell $(PKG_CONFIG) --libs libcjson)
+override LIBS += $(shell $(PKG_CONFIG) --libs glib-2.0) -lpthread -lcjson
 
 CFLAGS ?= -std=c99 -Os -Wall -Wextra -Werror
 override CFLAGS += $(shell $(PKG_CONFIG) --cflags glib-2.0) $(shell $(PKG_CONFIG) --cflags libcjson) -DVERSION=\"$(VERSION)\" -DGIT_COMMIT=\"$(GIT_COMMIT)\"
