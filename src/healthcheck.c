@@ -18,6 +18,7 @@
 #include <time.h>
 #include <signal.h>
 #include <pthread.h>
+#include <cJSON.h>
 
 /* Simple hash table implementation */
 struct hash_entry {
@@ -435,70 +436,116 @@ bool healthcheck_discover_from_oci_config(const char *bundle_path, healthcheck_c
         return false;
     }
     
-    /* Simple JSON parsing - look for annotations section */
-    char line[1024];
-    bool in_annotations = false;
-    bool found_healthcheck = false;
+    /* Read entire file */
+    fseek(fp, 0, SEEK_END);
+    long file_size = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
     
-    while (fgets(line, sizeof(line), fp)) {
-        /* Look for annotations section */
-        if (strstr(line, "\"annotations\"")) {
-            in_annotations = true;
-            continue;
-        }
-        
-        if (in_annotations) {
-            /* Look for healthcheck annotations */
-            if (strstr(line, "io.containers.healthcheck.enabled")) {
-                found_healthcheck = true;
-                break;
-            }
-            
-            /* End of annotations section */
-            if (strstr(line, "}") && strstr(line, "}")) {
-                break;
-            }
-        }
-    }
-    
-    fclose(fp);
-    
-    if (!found_healthcheck) {
-        ndebug("No healthcheck annotations found in OCI config");
+    char *file_content = malloc(file_size + 1);
+    if (!file_content) {
+        fclose(fp);
         return false;
     }
     
-    /* For now, return a simple enabled config */
-    /* In a real implementation, you'd parse the actual JSON values */
-    config->enabled = true;
-    config->test = calloc(2, sizeof(char*));
-    config->test[0] = strdup("echo");
-    config->test[1] = strdup("healthy");
-    config->interval = 30;
-    config->timeout = 10;
-    config->start_period = 0;
-    config->retries = 3;
+    size_t bytes_read = fread(file_content, 1, file_size, fp);
+    if (bytes_read != (size_t)file_size) {
+        nwarn("Failed to read entire config file");
+        free(file_content);
+        fclose(fp);
+        return false;
+    }
+    file_content[file_size] = '\0';
+    fclose(fp);
     
-    return true;
+    /* Parse JSON using cJSON */
+    cJSON *json = cJSON_Parse(file_content);
+    if (json == NULL) {
+        nwarn("Failed to parse OCI config JSON");
+        free(file_content);
+        return false;
+    }
+    
+    /* Look for annotations */
+    cJSON *annotations = cJSON_GetObjectItem(json, "annotations");
+    if (cJSON_IsObject(annotations)) {
+        cJSON *healthcheck = cJSON_GetObjectItem(annotations, "io.podman.healthcheck");
+        if (cJSON_IsString(healthcheck)) {
+            /* Parse the healthcheck JSON */
+            bool result = healthcheck_parse_oci_annotations(healthcheck->valuestring, config);
+            cJSON_Delete(json);
+            free(file_content);
+            return result;
+        }
+    }
+    
+    cJSON_Delete(json);
+    free(file_content);
+    return false;
 }
 
 /* Parse healthcheck configuration from OCI annotations */
 bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck_config_t *config) {
-    /* Simplified implementation - in reality you'd parse the JSON */
     if (annotations_json == NULL || config == NULL) {
         nwarn("Invalid parameters for annotation parsing");
         return false;
     }
     
-    /* For now, just enable with a simple command */
+    /* Parse the JSON using cJSON */
+    cJSON *json = cJSON_Parse(annotations_json);
+    if (json == NULL) {
+        nwarn("Failed to parse healthcheck JSON");
+        return false;
+    }
+    
+    /* Set defaults */
     config->enabled = true;
-    config->test = calloc(2, sizeof(char*));
-    config->test[0] = strdup("echo");
-    config->test[1] = strdup("healthy");
-    config->interval = 30;
-    config->timeout = 10;
-    config->start_period = 0;
-    config->retries = 3;
+    config->interval = 30;      // Default 30 seconds
+    config->timeout = 10;       // Default 10 seconds
+    config->start_period = 0;   // Default 0 seconds
+    config->retries = 3;        // Default 3 retries
+    
+    /* Parse Test command */
+    cJSON *test_array = cJSON_GetObjectItem(json, "Test");
+    if (cJSON_IsArray(test_array) && cJSON_GetArraySize(test_array) >= 2) {
+        cJSON *cmd_type = cJSON_GetArrayItem(test_array, 0);
+        cJSON *cmd_value = cJSON_GetArrayItem(test_array, 1);
+        
+        if (cJSON_IsString(cmd_type) && cJSON_IsString(cmd_value)) {
+            if (strcmp(cmd_type->valuestring, "CMD") == 0) {
+                /* Create test command array */
+                config->test = calloc(2, sizeof(char*));
+                config->test[0] = strdup(cmd_value->valuestring);
+                config->test[1] = NULL;
+            }
+        }
+    }
+    
+    /* Parse Interval (now in seconds) */
+    cJSON *interval = cJSON_GetObjectItem(json, "Interval");
+    if (cJSON_IsNumber(interval)) {
+        config->interval = (int)interval->valuedouble;
+    }
+    
+    /* Parse Timeout (now in seconds) */
+    cJSON *timeout = cJSON_GetObjectItem(json, "Timeout");
+    if (cJSON_IsNumber(timeout)) {
+        config->timeout = (int)timeout->valuedouble;
+    }
+    
+    /* Parse StartPeriod (now in seconds) */
+    cJSON *start_period = cJSON_GetObjectItem(json, "StartPeriod");
+    if (cJSON_IsNumber(start_period)) {
+        config->start_period = (int)start_period->valuedouble;
+    }
+    
+    /* Parse Retries */
+    cJSON *retries = cJSON_GetObjectItem(json, "Retries");
+    if (cJSON_IsNumber(retries)) {
+        config->retries = (int)retries->valuedouble;
+    }
+    
+    /* Clean up */
+    cJSON_Delete(json);
     
     return true;
 }

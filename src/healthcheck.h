@@ -4,6 +4,7 @@
 #include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
+#include <cJSON.h>
 
 /* Healthcheck status enumeration */
 typedef enum {
