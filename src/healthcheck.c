@@ -559,6 +559,8 @@ void *healthcheck_timer_thread(void *user_data) {
     /* Make a local copy of the timer pointer to avoid race conditions */
     healthcheck_timer_t *local_timer = timer;
     
+    ninfof("Healthcheck timer started for container %s", local_timer->container_id);
+    
     while (local_timer->timer_active) {
         /* Sleep for the interval, but check timer_active periodically */
         int sleep_time = local_timer->config.interval;
@@ -602,13 +604,18 @@ void *healthcheck_timer_thread(void *user_data) {
             local_timer->consecutive_failures = 0;
             if (local_timer->status != HEALTHCHECK_HEALTHY) {
                 local_timer->status = HEALTHCHECK_HEALTHY;
+                ninfof("Healthcheck status changed to: healthy");
                 healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
+            } else {
+                ninfof("Healthcheck status remains: healthy");
             }
         } else {
             /* Healthcheck failed */
             local_timer->consecutive_failures++;
+            ninfof("Healthcheck failed (exit code: %d), consecutive failures: %d", exit_code, local_timer->consecutive_failures);
             if (local_timer->consecutive_failures >= local_timer->config.retries) {
                 local_timer->status = HEALTHCHECK_UNHEALTHY;
+                ninfof("Healthcheck status changed to: unhealthy (retries exceeded)");
                 healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
             }
         }
@@ -616,5 +623,6 @@ void *healthcheck_timer_thread(void *user_data) {
         local_timer->last_check_time = time(NULL);
     }
     
+    ninfof("Healthcheck timer stopped for container %s", local_timer->container_id);
     return NULL;
 }
