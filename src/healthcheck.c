@@ -17,6 +17,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include <signal.h>
+#include <pthread.h>
 
 /* Simple hash table implementation */
 struct hash_entry {
@@ -300,8 +301,13 @@ bool healthcheck_timer_start(healthcheck_timer_t *timer) {
         return false;
     }
     
-    /* For now, we'll use a simple approach with alarm() and signal handling */
-    /* In a real implementation, you'd want to use a proper timer mechanism */
+    /* Create a timer thread */
+    int result = pthread_create(&timer->timer_thread, NULL, healthcheck_timer_thread, timer);
+    if (result != 0) {
+        nwarnf("Failed to create healthcheck timer thread: %s", strerror(result));
+        return false;
+    }
+    
     timer->timer_active = true;
     timer->status = HEALTHCHECK_STARTING;
     timer->last_check_time = time(NULL);
@@ -317,6 +323,9 @@ void healthcheck_timer_stop(healthcheck_timer_t *timer) {
     
     timer->timer_active = false;
     timer->status = HEALTHCHECK_NONE;
+    
+    /* Wait for the timer thread to finish */
+    pthread_join(timer->timer_thread, NULL);
 }
 
 /* Check if timer is active */
@@ -494,50 +503,60 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
     return true;
 }
 
-/* Timer callback function */
-bool healthcheck_timer_callback(void *user_data) {
+/* Timer thread function */
+void *healthcheck_timer_thread(void *user_data) {
     healthcheck_timer_t *timer = (healthcheck_timer_t *)user_data;
-    if (timer == NULL || !timer->timer_active) {
-        return false; /* Stop timer */
+    if (timer == NULL) {
+        return NULL;
     }
     
-    /* Check if we're still in start period */
-    if (timer->start_period_remaining > 0) {
-        timer->start_period_remaining -= timer->config.interval;
+    while (timer->timer_active) {
+        /* Sleep for the interval */
+        sleep(timer->config.interval);
+        
+        if (!timer->timer_active) {
+            break;
+        }
+        
+        /* Check if we're still in start period */
         if (timer->start_period_remaining > 0) {
-            return true; /* Continue timer */
+            timer->start_period_remaining -= timer->config.interval;
+            if (timer->start_period_remaining > 0) {
+                continue;
+            }
         }
-    }
-    
-    /* Execute healthcheck command */
-    int exit_code;
-    bool success = healthcheck_execute_command(&timer->config, &exit_code);
-    
-    if (!success) {
-        nwarnf("Failed to execute healthcheck command for container %s", timer->container_id);
-        timer->consecutive_failures++;
-        timer->status = HEALTHCHECK_UNHEALTHY;
-        healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
-        return true; /* Continue timer */
-    }
-    
-    /* Check if healthcheck passed */
-    if (exit_code == 0) {
-        /* Healthcheck passed */
-        timer->consecutive_failures = 0;
-        if (timer->status != HEALTHCHECK_HEALTHY) {
-            timer->status = HEALTHCHECK_HEALTHY;
-            healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
-        }
-    } else {
-        /* Healthcheck failed */
-        timer->consecutive_failures++;
-        if (timer->consecutive_failures >= timer->config.retries) {
+        
+        /* Execute healthcheck command */
+        int exit_code;
+        bool success = healthcheck_execute_command(&timer->config, &exit_code);
+        
+        if (!success) {
+            nwarnf("Failed to execute healthcheck command for container %s", timer->container_id);
+            timer->consecutive_failures++;
             timer->status = HEALTHCHECK_UNHEALTHY;
             healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            continue;
         }
+        
+        /* Check if healthcheck passed */
+        if (exit_code == 0) {
+            /* Healthcheck passed */
+            timer->consecutive_failures = 0;
+            if (timer->status != HEALTHCHECK_HEALTHY) {
+                timer->status = HEALTHCHECK_HEALTHY;
+                healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            }
+        } else {
+            /* Healthcheck failed */
+            timer->consecutive_failures++;
+            if (timer->consecutive_failures >= timer->config.retries) {
+                timer->status = HEALTHCHECK_UNHEALTHY;
+                healthcheck_send_status_update(timer->container_id, timer->status, exit_code);
+            }
+        }
+        
+        timer->last_check_time = time(NULL);
     }
     
-    timer->last_check_time = time(NULL);
-    return true; /* Continue timer */
+    return NULL;
 }

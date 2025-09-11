@@ -3,6 +3,7 @@
 
 #include <stdbool.h>
 #include <time.h>
+#include <pthread.h>
 
 /* Healthcheck status enumeration */
 typedef enum {
@@ -30,6 +31,7 @@ typedef struct {
     int consecutive_failures;       /* Number of consecutive failures */
     int start_period_remaining;     /* Remaining start period (seconds) */
     bool timer_active;              /* Whether timer is currently active */
+    pthread_t timer_thread;         /* Timer thread */
     time_t last_check_time;         /* Time of last healthcheck */
 } healthcheck_timer_t;
 
@@ -77,7 +79,7 @@ bool healthcheck_send_status_update(const char *container_id, healthcheck_status
 bool healthcheck_discover_from_oci_config(const char *bundle_path, healthcheck_config_t *config);
 bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck_config_t *config);
 
-/* Timer callback function */
-bool healthcheck_timer_callback(void *user_data);
+/* Timer thread function */
+void *healthcheck_timer_thread(void *user_data);
 
 #endif /* HEALTHCHECK_H */
