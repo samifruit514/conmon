@@ -41,13 +41,13 @@ int main(int argc, char *argv[])
 {
 	setlocale(LC_ALL, "");
 	umask(DEFAULT_UMASK);
+	
 	_cleanup_gerror_ GError *err = NULL;
 	char buf[BUF_SIZE];
 	int num_read;
 	_cleanup_close_ int dev_null_r_cleanup = -1;
 	_cleanup_close_ int dev_null_w_cleanup = -1;
 	_cleanup_close_ int dummyfd = -1;
-
 	int initialize_ec = initialize_cli(argc, argv);
 	if (initialize_ec >= 0) {
 		exit(initialize_ec);
@@ -417,20 +417,29 @@ int main(int argc, char *argv[])
 	/* Only start healthcheck timers if explicitly enabled via CLI flag */
 	if (opt_bundle_path != NULL && opt_enable_healthcheck) {
 		healthcheck_config_t config;
+		memset(&config, 0, sizeof(config));
+		
 		if (healthcheck_discover_from_oci_config(opt_bundle_path, &config)) {
 			healthcheck_timer_t *timer = healthcheck_timer_new(opt_cid, &config);
 			if (timer != NULL) {
-					if (healthcheck_timer_start(timer)) {
+				if (healthcheck_timer_start(timer)) {
+					if (active_healthcheck_timers != NULL) {
 						hash_table_put(active_healthcheck_timers, opt_cid, timer);
 						ninfof("Started healthcheck for container %s", opt_cid);
 					} else {
-						nwarnf("Failed to start healthcheck for container %s", opt_cid);
+						nwarnf("Active healthcheck timers table is NULL");
 						healthcheck_timer_free(timer);
 					}
+				} else {
+					nwarnf("Failed to start healthcheck for container %s", opt_cid);
+					healthcheck_timer_free(timer);
+				}
 			} else {
 				nwarnf("Failed to create healthcheck timer for container %s", opt_cid);
 			}
 			healthcheck_config_free(&config);
+		} else {
+			nwarnf("Failed to discover healthcheck config from OCI bundle");
 		}
 	}
 
