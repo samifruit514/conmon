@@ -420,13 +420,13 @@ int main(int argc, char *argv[])
 		if (healthcheck_discover_from_oci_config(opt_bundle_path, &config)) {
 			healthcheck_timer_t *timer = healthcheck_timer_new(opt_cid, &config);
 			if (timer != NULL) {
-				if (healthcheck_timer_start(timer)) {
-					g_hash_table_insert(active_healthcheck_timers, g_strdup(opt_cid), timer);
-					ninfof("Started healthcheck for container %s", opt_cid);
-				} else {
-					nwarnf("Failed to start healthcheck for container %s", opt_cid);
-					healthcheck_timer_free(timer);
-				}
+					if (healthcheck_timer_start(timer)) {
+						hash_table_put(active_healthcheck_timers, opt_cid, timer);
+						ninfof("Started healthcheck for container %s", opt_cid);
+					} else {
+						nwarnf("Failed to start healthcheck for container %s", opt_cid);
+						healthcheck_timer_free(timer);
+					}
 			} else {
 				nwarnf("Failed to create healthcheck timer for container %s", opt_cid);
 			}

@@ -25,10 +25,10 @@ else
 	$(eval GIT_BRANCH_CLEAN := unknown)
 endif
 
-override LIBS += $(shell $(PKG_CONFIG) --libs glib-2.0 json-glib-1.0)
+override LIBS += $(shell $(PKG_CONFIG) --libs glib-2.0)
 
 CFLAGS ?= -std=c99 -Os -Wall -Wextra -Werror
-override CFLAGS += $(shell $(PKG_CONFIG) --cflags glib-2.0 json-glib-1.0) -DVERSION=\"$(VERSION)\" -DGIT_COMMIT=\"$(GIT_COMMIT)\"
+override CFLAGS += $(shell $(PKG_CONFIG) --cflags glib-2.0) -DVERSION=\"$(VERSION)\" -DGIT_COMMIT=\"$(GIT_COMMIT)\"
 
 # Conditionally compile journald logging code if the libraries can be found
 # if they can be found, set USE_JOURNALD macro for use in conmon code.
