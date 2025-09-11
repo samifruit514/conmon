@@ -406,8 +406,7 @@ bool healthcheck_send_status_update(const char *container_id, healthcheck_status
     free(status_str);
     
     /* Send via sync pipe to Podman */
-    /* Temporarily disabled for debugging */
-    /* write_or_close_sync_fd(&sync_pipe_fd, HEALTHCHECK_MSG_STATUS_UPDATE, json_msg); */
+    write_or_close_sync_fd(&sync_pipe_fd, HEALTHCHECK_MSG_STATUS_UPDATE, json_msg);
     ninfof("Healthcheck status update: %s", json_msg);
     
     return true;
