@@ -406,8 +406,9 @@ bool healthcheck_send_status_update(const char *container_id, healthcheck_status
     free(status_str);
     
     /* Send via sync pipe to Podman */
+    ninfof("Sending healthcheck status to Podman via sync pipe: %s", json_msg);
     write_or_close_sync_fd(&sync_pipe_fd, HEALTHCHECK_MSG_STATUS_UPDATE, json_msg);
-    ninfof("Healthcheck status update: %s", json_msg);
+    ninfof("Healthcheck status update sent successfully");
     
     return true;
 }
@@ -605,10 +606,11 @@ void *healthcheck_timer_thread(void *user_data) {
             if (local_timer->status != HEALTHCHECK_HEALTHY) {
                 local_timer->status = HEALTHCHECK_HEALTHY;
                 ninfof("Healthcheck status changed to: healthy");
-                healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
             } else {
                 ninfof("Healthcheck status remains: healthy");
             }
+            /* Always send status update to keep Podman informed */
+            healthcheck_send_status_update(local_timer->container_id, local_timer->status, exit_code);
         } else {
             /* Healthcheck failed */
             local_timer->consecutive_failures++;
