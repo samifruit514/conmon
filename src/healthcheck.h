@@ -37,7 +37,7 @@ typedef struct {
 } healthcheck_timer_t;
 
 /* Healthcheck message types for communication with Podman */
-#define HEALTHCHECK_MSG_STATUS_UPDATE 100
+#define HEALTHCHECK_MSG_STATUS_UPDATE -100
 
 /* Global healthcheck timers hash table */
 extern struct hash_table *active_healthcheck_timers;
