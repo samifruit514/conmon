@@ -83,7 +83,7 @@ build_task:
         memory: 4
 
     script:
-        - dnf install -y make glib2-devel git gcc pkg-config systemd-devel libseccomp-devel
+        - dnf install -y make glib2-devel git gcc pkg-config systemd-devel libseccomp-devel json-c-devel
         - cd $CIRRUS_WORKING_DIR
         - make
         - make test

@@ -417,7 +417,7 @@ int main(int argc, char *argv[])
 	if (opt_bundle_path != NULL && opt_enable_healthcheck) {
 		healthcheck_config_t config;
 		memset(&config, 0, sizeof(config));
-		
+
 		if (healthcheck_discover_from_oci_config(opt_bundle_path, &config)) {
 			healthcheck_timer_t *timer = healthcheck_timer_new(opt_cid, &config);
 			if (timer != NULL) {
@@ -439,7 +439,7 @@ int main(int argc, char *argv[])
 		} else {
 			nwarnf("Failed to discover healthcheck config from OCI bundle");
 		}
-		
+
 		/* Always free the config, regardless of success or failure */
 		healthcheck_config_free(&config);
 	}

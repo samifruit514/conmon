@@ -4,36 +4,31 @@
 #include <stdbool.h>
 #include <time.h>
 #include <pthread.h>
-#include <cJSON.h>
+#include <json-c/json.h>
 
 /* Healthcheck status enumeration */
-typedef enum {
-    HEALTHCHECK_NONE = 0,
-    HEALTHCHECK_STARTING,
-    HEALTHCHECK_HEALTHY,
-    HEALTHCHECK_UNHEALTHY
-} healthcheck_status_t;
+typedef enum { HEALTHCHECK_NONE = 0, HEALTHCHECK_STARTING, HEALTHCHECK_HEALTHY, HEALTHCHECK_UNHEALTHY } healthcheck_status_t;
 
 /* Healthcheck configuration structure */
 typedef struct {
-    char **test;                    /* Healthcheck command array */
-    int interval;                   /* Interval between checks (seconds) */
-    int timeout;                    /* Timeout for each check (seconds) */
-    int start_period;               /* Grace period before first failure counts (seconds) */
-    int retries;                    /* Number of consecutive failures before marking unhealthy */
-    bool enabled;                   /* Whether healthcheck is enabled */
+	char **test;	  /* Healthcheck command array */
+	int interval;	  /* Interval between checks (seconds) */
+	int timeout;	  /* Timeout for each check (seconds) */
+	int start_period; /* Grace period before first failure counts (seconds) */
+	int retries;	  /* Number of consecutive failures before marking unhealthy */
+	bool enabled;	  /* Whether healthcheck is enabled */
 } healthcheck_config_t;
 
 /* Healthcheck timer structure */
 typedef struct {
-    char *container_id;             /* Container ID */
-    healthcheck_config_t config;    /* Healthcheck configuration */
-    healthcheck_status_t status;    /* Current healthcheck status */
-    int consecutive_failures;       /* Number of consecutive failures */
-    int start_period_remaining;     /* Remaining start period (seconds) */
-    bool timer_active;              /* Whether timer is currently active */
-    pthread_t timer_thread;         /* Timer thread */
-    time_t last_check_time;         /* Time of last healthcheck */
+	char *container_id;	     /* Container ID */
+	healthcheck_config_t config; /* Healthcheck configuration */
+	healthcheck_status_t status; /* Current healthcheck status */
+	int consecutive_failures;    /* Number of consecutive failures */
+	int start_period_remaining;  /* Remaining start period (seconds) */
+	bool timer_active;	     /* Whether timer is currently active */
+	pthread_t timer_thread;	     /* Timer thread */
+	time_t last_check_time;	     /* Time of last healthcheck */
 } healthcheck_timer_t;
 
 /* Healthcheck message types for communication with Podman */
