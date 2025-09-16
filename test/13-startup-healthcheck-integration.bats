@@ -33,7 +33,7 @@ load test_helper
 EOF
     
     # Test that conmon can parse startup healthcheck configuration
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test-startup.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test-startup.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup

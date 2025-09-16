@@ -27,18 +27,13 @@ load test_helper
     },
     "hostname": "test",
     "annotations": {
-        "io.containers.healthcheck.enabled": "true",
-        "io.containers.healthcheck.cmd": "echo healthy",
-        "io.containers.healthcheck.interval": "10",
-        "io.containers.healthcheck.timeout": "5",
-        "io.containers.healthcheck.start-period": "0",
-        "io.containers.healthcheck.retries": "3"
+        "io.podman.healthcheck": "{\"test\":[\"CMD-SHELL\",\"echo healthy\"],\"interval\":10,\"timeout\":5,\"retries\":3,\"start_period\":0}"
     }
 }
 EOF
     
     # Test that conmon can parse healthcheck flag with bundle path
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -73,11 +68,11 @@ EOF
 EOF
     
     # Test that conmon works without healthcheck annotations (no flag)
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Test that conmon works with healthcheck flag but no annotations
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -109,18 +104,17 @@ EOF
     },
     "hostname": "test",
     "annotations": {
-        "io.containers.healthcheck.enabled": "false",
-        "io.containers.healthcheck.cmd": "echo healthy"
+        "io.podman.healthcheck": "{\"test\":[\"CMD-SHELL\",\"echo healthy\"],\"interval\":10,\"timeout\":5,\"retries\":3,\"start_period\":0}"
     }
 }
 EOF
     
     # Test that conmon works with disabled healthcheck (no flag)
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Test that conmon works with healthcheck flag but disabled annotations
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup

@@ -15,6 +15,8 @@
 #include <errno.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <fcntl.h>
 #include <time.h>
 #include <signal.h>
 #include <pthread.h>
@@ -313,16 +315,6 @@ void healthcheck_timer_stop(healthcheck_timer_t *timer) {
     }
 }
 
-/* Check if timer is active */
-bool healthcheck_timer_is_active(const healthcheck_timer_t *timer) {
-    return timer != NULL && timer->timer_active;
-}
-
-/* Get current healthcheck status */
-healthcheck_status_t healthcheck_timer_get_status(const healthcheck_timer_t *timer) {
-    return timer != NULL ? timer->status : HEALTHCHECK_NONE;
-}
-
 /* Execute healthcheck command */
 bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_code) {
     if (config == NULL || config->test == NULL || exit_code == NULL) {
@@ -330,14 +322,57 @@ bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_c
         return false;
     }
     
-    /* For now, we'll use a simple approach: check if the container is running */
-    /* This is a placeholder implementation - in a real implementation, we would */
-    /* need to execute the command inside the container using the container runtime API */
+    /* Initialize exit code to failure */
+    *exit_code = -1;
     
-    /* Simple healthcheck: just return success for now */
-    /* TODO: Implement proper container command execution */
-    *exit_code = 0;
-    return true;
+    /* Fork a child process to execute the healthcheck command */
+    pid_t pid = fork();
+    if (pid == -1) {
+        nwarnf("Failed to fork process for healthcheck command: %s", strerror(errno));
+        return false;
+    }
+    
+    if (pid == 0) {
+        /* Child process - execute the healthcheck command */
+        /* Redirect stdout and stderr to /dev/null to avoid cluttering logs */
+        int devnull = open("/dev/null", O_WRONLY);
+        if (devnull != -1) {
+            dup2(devnull, STDOUT_FILENO);
+            dup2(devnull, STDERR_FILENO);
+            close(devnull);
+        }
+        
+        /* Execute the command */
+        if (execvp(config->test[0], config->test) == -1) {
+            /* If execvp fails, exit with error code */
+            _exit(127); /* Command not found */
+        }
+    } else {
+        /* Parent process - wait for child to complete */
+        int status;
+        pid_t wait_result = waitpid(pid, &status, 0);
+        
+        if (wait_result == -1) {
+            nwarnf("Failed to wait for healthcheck command: %s", strerror(errno));
+            return false;
+        }
+        
+        if (WIFEXITED(status)) {
+            *exit_code = WEXITSTATUS(status);
+            return true;
+        } else if (WIFSIGNALED(status)) {
+            nwarnf("Healthcheck command terminated by signal %d", WTERMSIG(status));
+            *exit_code = 128 + WTERMSIG(status); /* Standard convention for signal termination */
+            return true;
+        } else {
+            nwarn("Healthcheck command did not terminate normally");
+            *exit_code = -1;
+            return false;
+        }
+    }
+    
+    /* This should never be reached */
+    return false;
 }
 
 /* Convert healthcheck status to string */
@@ -484,18 +519,73 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
     }
     
     cJSON *cmd_type = cJSON_GetArrayItem(test_array, 0);
-    cJSON *cmd_value = cJSON_GetArrayItem(test_array, 1);
     
-    if (!cJSON_IsString(cmd_type) || !cJSON_IsString(cmd_value)) {
-        nwarn("Healthcheck test command must be an array of strings");
+    if (!cJSON_IsString(cmd_type)) {
+        nwarn("Healthcheck command type must be a string");
         cJSON_Delete(json);
         return false;
     }
     
-    if (strcmp(cmd_type->valuestring, "CMD") == 0 || strcmp(cmd_type->valuestring, "CMD-SHELL") == 0) {
-        /* Validate command length and content */
+    if (strcmp(cmd_type->valuestring, "CMD") == 0) {
+        /* CMD (Exec Form) - Array of command and arguments */
+        int array_size = cJSON_GetArraySize(test_array);
+        if (array_size < 2) {
+            nwarn("CMD healthcheck requires at least one command argument");
+            cJSON_Delete(json);
+            return false;
+        }
+        
+        /* Allocate memory for command array (excluding the "CMD" type) */
+        config->test = calloc(array_size, sizeof(char*));
+        if (config->test == NULL) {
+            nwarn("Failed to allocate memory for healthcheck test command");
+            cJSON_Delete(json);
+            return false;
+        }
+        
+        /* Copy all arguments except the first one (which is "CMD") */
+        for (int i = 1; i < array_size; i++) {
+            cJSON *arg = cJSON_GetArrayItem(test_array, i);
+            if (!cJSON_IsString(arg)) {
+                nwarnf("CMD healthcheck argument %d must be a string", i);
+                for (int j = 0; j < i - 1; j++) {
+                    free(config->test[j]);
+                }
+                free(config->test);
+                cJSON_Delete(json);
+                return false;
+            }
+            
+            config->test[i-1] = strdup(arg->valuestring);
+            if (config->test[i-1] == NULL) {
+                nwarn("Failed to duplicate healthcheck command argument");
+                for (int j = 0; j < i - 1; j++) {
+                    free(config->test[j]);
+                }
+                free(config->test);
+                cJSON_Delete(json);
+                return false;
+            }
+        }
+        config->test[array_size-1] = NULL;
+        
+    } else if (strcmp(cmd_type->valuestring, "CMD-SHELL") == 0) {
+        /* CMD-SHELL (Shell Form) - Single string executed via /bin/sh -c */
+        if (cJSON_GetArraySize(test_array) != 2) {
+            nwarn("CMD-SHELL healthcheck requires exactly one command string");
+            cJSON_Delete(json);
+            return false;
+        }
+        
+        cJSON *cmd_value = cJSON_GetArrayItem(test_array, 1);
+        if (!cJSON_IsString(cmd_value)) {
+            nwarn("CMD-SHELL healthcheck command must be a string");
+            cJSON_Delete(json);
+            return false;
+        }
+        
         size_t cmd_len = strlen(cmd_value->valuestring);
-        const size_t MAX_HEALTHCHECK_CMD_LEN = 4096;  /* Reasonable limit for healthcheck commands */
+        const size_t MAX_HEALTHCHECK_CMD_LEN = 4096;
         
         if (cmd_len == 0) {
             nwarn("Healthcheck command cannot be empty");
@@ -509,22 +599,31 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
             return false;
         }
         
-        /* Basic validation - reject obviously dangerous commands */
-        /* Create test command array */
-        config->test = calloc(2, sizeof(char*));
+        /* Create test command array for shell execution */
+        config->test = calloc(3, sizeof(char*));
         if (config->test == NULL) {
             nwarn("Failed to allocate memory for healthcheck test command");
             cJSON_Delete(json);
             return false;
         }
         
-        config->test[0] = strdup(cmd_value->valuestring);
-        if (config->test[0] == NULL) {
-            nwarn("Failed to duplicate healthcheck test command string");
+        config->test[0] = strdup("/bin/sh");
+        config->test[1] = strdup("-c");
+        config->test[2] = strdup(cmd_value->valuestring);
+        
+        if (config->test[0] == NULL || config->test[1] == NULL || config->test[2] == NULL) {
+            nwarn("Failed to duplicate healthcheck test command strings");
+            for (int i = 0; i < 3; i++) {
+                if (config->test[i] != NULL) {
+                    free(config->test[i]);
+                }
+            }
+            free(config->test);
             cJSON_Delete(json);
             return false;
         }
-        config->test[1] = NULL;
+        config->test[3] = NULL;
+        
     } else {
         nwarnf("Unsupported healthcheck command type: %s (only CMD and CMD-SHELL supported)", cmd_type->valuestring);
         cJSON_Delete(json);

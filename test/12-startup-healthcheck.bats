@@ -33,7 +33,7 @@ load test_helper
 EOF
     
     # Test that conmon can parse startup healthcheck configuration
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -71,7 +71,7 @@ EOF
 EOF
     
     # Test that conmon can parse healthcheck configuration without start period
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -109,7 +109,7 @@ EOF
 EOF
     
     # Test that conmon handles invalid JSON gracefully
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -147,7 +147,7 @@ EOF
 EOF
     
     # Test that conmon handles missing test command gracefully
-    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log --enable-healthcheck
     [ "$status" -eq 0 ]
     
     # Cleanup

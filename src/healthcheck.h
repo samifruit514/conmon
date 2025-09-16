@@ -60,8 +60,6 @@ healthcheck_timer_t *healthcheck_timer_new(const char *container_id, const healt
 void healthcheck_timer_free(healthcheck_timer_t *timer);
 bool healthcheck_timer_start(healthcheck_timer_t *timer);
 void healthcheck_timer_stop(healthcheck_timer_t *timer);
-bool healthcheck_timer_is_active(const healthcheck_timer_t *timer);
-healthcheck_status_t healthcheck_timer_get_status(const healthcheck_timer_t *timer);
 
 /* Healthcheck command execution */
 bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_code);

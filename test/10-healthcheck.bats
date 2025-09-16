@@ -4,7 +4,7 @@ load test_helper
 
 @test "healthcheck basic functionality" {
     # Test that conmon works without any healthcheck configuration
-    run $CONMON_BINARY --cid test-container --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --log-path /tmp/test.log
     [ "$status" -eq 0 ]
 }
 
@@ -36,11 +36,11 @@ load test_helper
 EOF
     
     # Test that conmon works without healthcheck annotations (no flag)
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Test that conmon works with healthcheck flag but no annotations
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --enable-healthcheck --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Cleanup
@@ -65,18 +65,17 @@ EOF
     "root": {"path": "rootfs", "readonly": true},
     "hostname": "test",
     "annotations": {
-        "io.containers.healthcheck.enabled": "false",
-        "io.containers.healthcheck.cmd": "echo healthy"
+        "io.podman.healthcheck": "{\"test\":[\"CMD-SHELL\",\"echo healthy\"],\"interval\":10,\"timeout\":5,\"retries\":3,\"start_period\":0}"
     }
 }
 EOF
     
     # Test that conmon works with disabled healthcheck (no flag)
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Test that conmon works with healthcheck flag but disabled annotations
-    run $CONMON_BINARY --cid test-container --bundle "$bundle_path" --enable-healthcheck --version
+    run $CONMON_BINARY --cid test-container --cuuid test-uuid --runtime /bin/echo --bundle "$bundle_path" --enable-healthcheck --log-path /tmp/test.log
     [ "$status" -eq 0 ]
     
     # Cleanup
