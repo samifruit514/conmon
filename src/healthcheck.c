@@ -549,9 +549,12 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
 		json_object_put(json);
 		return false;
 	}
+	
+	ninfof("Healthcheck command type: %s", json_object_get_string(cmd_type));
 
 	if (strcmp(json_object_get_string(cmd_type), "CMD") == 0) {
 		/* CMD (Exec Form) - Array of command and arguments */
+		ninfof("Parsing CMD healthcheck command");
 		int array_size = json_object_array_length(test_array);
 		if (array_size < 2) {
 			nwarn("CMD healthcheck requires at least one command argument");
@@ -592,9 +595,16 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
 			}
 		}
 		config->test[array_size - 1] = NULL;
+		
+		/* Debug: Log the final command array */
+		ninfof("CMD command array created with %d elements", array_size);
+		for (int i = 0; i < array_size; i++) {
+			ninfof("CMD[%d]: %s", i, config->test[i] ? config->test[i] : "NULL");
+		}
 
 	} else if (strcmp(json_object_get_string(cmd_type), "CMD-SHELL") == 0) {
 		/* CMD-SHELL (Shell Form) - Single string executed via /bin/sh -c */
+		ninfof("Parsing CMD-SHELL healthcheck command");
 		if (json_object_array_length(test_array) != 2) {
 			nwarn("CMD-SHELL healthcheck requires exactly one command string");
 			json_object_put(json);
@@ -647,6 +657,12 @@ bool healthcheck_parse_oci_annotations(const char *annotations_json, healthcheck
 			return false;
 		}
 		config->test[3] = NULL;
+		
+		/* Debug: Log the final command array */
+		ninfof("CMD-SHELL command array created");
+		for (int i = 0; i < 4; i++) {
+			ninfof("CMD-SHELL[%d]: %s", i, config->test[i] ? config->test[i] : "NULL");
+		}
 
 	} else {
 		nwarnf("Unsupported healthcheck command type: %s (only CMD and CMD-SHELL supported)", json_object_get_string(cmd_type));

@@ -414,6 +414,9 @@ int main(int argc, char *argv[])
 
 	/* Configure healthcheck - automatic discovery from OCI config.json */
 	/* Only start healthcheck timers if explicitly enabled via CLI flag */
+	ninfof("Healthcheck check: bundle_path=%s, enable_healthcheck=%s", 
+	       opt_bundle_path ? opt_bundle_path : "NULL", 
+	       opt_enable_healthcheck ? "true" : "false");
 	if (opt_bundle_path != NULL && opt_enable_healthcheck) {
 		healthcheck_config_t config;
 		memset(&config, 0, sizeof(config));
