@@ -57,7 +57,7 @@ bool healthcheck_timer_start(healthcheck_timer_t *timer);
 void healthcheck_timer_stop(healthcheck_timer_t *timer);
 
 /* Healthcheck command execution */
-bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_code);
+bool healthcheck_execute_command(const healthcheck_config_t *config, const char *container_id, const char *runtime_path, int *exit_code);
 
 /* Healthcheck status utilities */
 char *healthcheck_status_to_string(healthcheck_status_t status);

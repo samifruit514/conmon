@@ -332,10 +332,10 @@ void healthcheck_timer_stop(healthcheck_timer_t *timer)
 	}
 }
 
-/* Execute healthcheck command */
-bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_code)
+/* Execute healthcheck command inside container using runtime */
+bool healthcheck_execute_command(const healthcheck_config_t *config, const char *container_id, const char *runtime_path, int *exit_code)
 {
-	if (config == NULL || config->test == NULL || exit_code == NULL) {
+	if (config == NULL || config->test == NULL || container_id == NULL || runtime_path == NULL || exit_code == NULL) {
 		nwarn("Invalid parameters for healthcheck command execution");
 		return false;
 	}
@@ -343,47 +343,113 @@ bool healthcheck_execute_command(const healthcheck_config_t *config, int *exit_c
 	/* Initialize exit code to failure */
 	*exit_code = -1;
 
-	/* Fork a child process to execute the healthcheck command */
+	/* Create stderr pipe to capture error output */
+	int stderr_pipe[2];
+	if (pipe(stderr_pipe) == -1) {
+		nwarnf("Failed to create pipe for healthcheck stderr: %s", strerror(errno));
+		return false;
+	}
+
+	/* Fork a child process to execute the healthcheck command inside container */
 	pid_t pid = fork();
 	if (pid == -1) {
 		nwarnf("Failed to fork process for healthcheck command: %s", strerror(errno));
+		close(stderr_pipe[0]);
+		close(stderr_pipe[1]);
 		return false;
 	}
 
 	if (pid == 0) {
-		/* Child process - execute the healthcheck command */
-		/* Redirect stdout and stderr to /dev/null to avoid cluttering logs */
+		/* Child process - execute the healthcheck command inside container */
+		close(stderr_pipe[0]); /* Close read end of stderr pipe */
+		
+		/* Redirect stdout to /dev/null and stderr to pipe */
 		int devnull = open("/dev/null", O_WRONLY);
 		if (devnull != -1) {
 			dup2(devnull, STDOUT_FILENO);
-			dup2(devnull, STDERR_FILENO);
 			close(devnull);
 		}
+		dup2(stderr_pipe[1], STDERR_FILENO); /* Redirect stderr to pipe */
+		close(stderr_pipe[1]);
 
-		/* Execute the command */
-		if (execvp(config->test[0], config->test) == -1) {
+		/* Build runtime command: runtime exec container_id command */
+		/* Count arguments needed */
+		int argc = 0;
+		while (config->test[argc] != NULL) {
+			argc++;
+		}
+		
+		/* Allocate space for runtime + exec + container_id + command + NULL */
+		char **runtime_argv = calloc(3 + argc, sizeof(char*));
+		if (runtime_argv == NULL) {
+			nwarn("Failed to allocate memory for runtime command");
+			_exit(127);
+		}
+		
+		/* Build the command array */
+		runtime_argv[0] = (char*)runtime_path;  /* Runtime executable */
+		runtime_argv[1] = "exec";               /* Runtime subcommand */
+		runtime_argv[2] = (char*)container_id;  /* Container ID */
+		
+		/* Copy healthcheck command arguments */
+		for (int i = 0; i < argc; i++) {
+			runtime_argv[3 + i] = config->test[i];
+		}
+		runtime_argv[3 + argc] = NULL; /* NULL terminator */
+
+		/* Execute the runtime command */
+		if (execvp(runtime_path, runtime_argv) == -1) {
 			/* If execvp fails, exit with error code */
 			_exit(127); /* Command not found */
 		}
 	} else {
 		/* Parent process - wait for child to complete */
+		close(stderr_pipe[1]); /* Close write end of stderr pipe */
 		int status;
 		pid_t wait_result = waitpid(pid, &status, 0);
 
 		if (wait_result == -1) {
 			nwarnf("Failed to wait for healthcheck command: %s", strerror(errno));
+			close(stderr_pipe[0]);
 			return false;
+		}
+
+		/* Read stderr output */
+		char stderr_buffer[4096];
+		ssize_t stderr_len = read(stderr_pipe[0], stderr_buffer, sizeof(stderr_buffer) - 1);
+		close(stderr_pipe[0]);
+
+		if (stderr_len > 0) {
+			stderr_buffer[stderr_len] = '\0';
+			/* Trim trailing newlines */
+			while (stderr_len > 0 && (stderr_buffer[stderr_len - 1] == '\n' || stderr_buffer[stderr_len - 1] == '\r')) {
+				stderr_buffer[--stderr_len] = '\0';
+			}
+		} else {
+			stderr_buffer[0] = '\0';
 		}
 
 		if (WIFEXITED(status)) {
 			*exit_code = WEXITSTATUS(status);
+			if (*exit_code != 0) {
+				nwarnf("Healthcheck command failed (exit code %d): %s", *exit_code, config->test[0]);
+				if (stderr_len > 0) {
+					nwarnf("Healthcheck command stderr: %s", stderr_buffer);
+				}
+			}
 			return true;
 		} else if (WIFSIGNALED(status)) {
-			nwarnf("Healthcheck command terminated by signal %d", WTERMSIG(status));
+			nwarnf("Healthcheck command terminated by signal %d: %s", WTERMSIG(status), config->test[0]);
+			if (stderr_len > 0) {
+				nwarnf("Healthcheck command stderr: %s", stderr_buffer);
+			}
 			*exit_code = 128 + WTERMSIG(status); /* Standard convention for signal termination */
 			return true;
 		} else {
-			nwarn("Healthcheck command did not terminate normally");
+			nwarnf("Healthcheck command did not terminate normally: %s", config->test[0]);
+			if (stderr_len > 0) {
+				nwarnf("Healthcheck command stderr: %s", stderr_buffer);
+			}
 			*exit_code = -1;
 			return false;
 		}
@@ -790,7 +856,7 @@ void *healthcheck_timer_thread(void *user_data)
 
 		/* Execute healthcheck command */
 		int exit_code;
-		bool success = healthcheck_execute_command(&local_timer->config, &exit_code);
+		bool success = healthcheck_execute_command(&local_timer->config, local_timer->container_id, opt_runtime_path, &exit_code);
 
 		if (!success) {
 			nwarnf("Failed to execute healthcheck command for container %s", local_timer->container_id);
