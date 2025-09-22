@@ -199,6 +199,9 @@ void healthcheck_config_free(healthcheck_config_t *config)
 	}
 
 	if (config->test != NULL) {
+		for (int i = 0; config->test[i] != NULL; i++) {
+			free(config->test[i]);
+		}
 		free(config->test);
 		config->test = NULL;
 	}
@@ -231,14 +234,34 @@ healthcheck_timer_t *healthcheck_timer_new(const char *container_id, const healt
 	timer->timer_active = false;
 	timer->last_check_time = 0;
 
-	/* Copy the test command string */
+	/* Copy the test command array */
 	if (config->test != NULL) {
-		timer->config.test = strdup(config->test);
+		int argc = 0;
+		while (config->test[argc] != NULL) {
+			argc++;
+		}
+		
+		timer->config.test = calloc(argc + 1, sizeof(char*));
 		if (timer->config.test == NULL) {
 			free(timer->container_id);
 			free(timer);
 			return NULL;
 		}
+		
+		for (int i = 0; i < argc; i++) {
+			timer->config.test[i] = strdup(config->test[i]);
+			if (timer->config.test[i] == NULL) {
+				/* Clean up on error */
+				for (int j = 0; j < i; j++) {
+					free(timer->config.test[j]);
+				}
+				free(timer->config.test);
+				free(timer->container_id);
+				free(timer);
+				return NULL;
+			}
+		}
+		timer->config.test[argc] = NULL;
 	}
 
 	return timer;
@@ -262,8 +285,11 @@ void healthcheck_timer_free(healthcheck_timer_t *timer)
 		timer->container_id = NULL;
 	}
 
-	/* Free test command string */
+	/* Free test command array */
 	if (timer->config.test != NULL) {
+		for (int i = 0; timer->config.test[i] != NULL; i++) {
+			free(timer->config.test[i]);
+		}
 		free(timer->config.test);
 		timer->config.test = NULL;
 	}
@@ -354,9 +380,17 @@ bool healthcheck_execute_command(const healthcheck_config_t *config, const char 
 		close(stderr_pipe[1]);
 
 		/* Build runtime command for direct execution */
-		/* Format: runtime exec container_id command */
+		/* Format: runtime exec container_id command args... */
 		char **runtime_argv;
-		runtime_argv = calloc(5, sizeof(char *));
+		
+		/* Count arguments needed */
+		int argc = 0;
+		while (config->test[argc] != NULL) {
+			argc++;
+		}
+		
+		/* Allocate runtime command array: runtime + exec + container_id + command + args + NULL */
+		runtime_argv = calloc(3 + argc + 1, sizeof(char *));
 		if (runtime_argv == NULL) {
 			nwarn("Failed to allocate memory for runtime command");
 			_exit(127);
@@ -365,8 +399,12 @@ bool healthcheck_execute_command(const healthcheck_config_t *config, const char 
 		runtime_argv[0] = (char *)runtime_path; /* Runtime executable */
 		runtime_argv[1] = "exec";		/* Runtime subcommand */
 		runtime_argv[2] = (char *)container_id; /* Container ID */
-		runtime_argv[3] = (char *)config->test;	/* Command string */
-		runtime_argv[4] = NULL;			/* NULL terminator */
+		
+		/* Copy healthcheck command and arguments */
+		for (int i = 0; i < argc; i++) {
+			runtime_argv[3 + i] = config->test[i];
+		}
+		runtime_argv[3 + argc] = NULL; /* NULL terminator */
 
 		/* Execute the runtime command */
 		if (execvp(runtime_path, runtime_argv) == -1) {
@@ -403,21 +441,21 @@ bool healthcheck_execute_command(const healthcheck_config_t *config, const char 
 		if (WIFEXITED(status)) {
 			*exit_code = WEXITSTATUS(status);
 			if (*exit_code != 0) {
-				nwarnf("Healthcheck command failed (exit code %d): %s", *exit_code, config->test);
+				nwarnf("Healthcheck command failed (exit code %d): %s", *exit_code, config->test[0]);
 				if (stderr_len > 0) {
 					nwarnf("Healthcheck command stderr: %s", stderr_buffer);
 				}
 			}
 			return true;
 		} else if (WIFSIGNALED(status)) {
-			nwarnf("Healthcheck command terminated by signal %d: %s", WTERMSIG(status), config->test);
+			nwarnf("Healthcheck command terminated by signal %d: %s", WTERMSIG(status), config->test[0]);
 			if (stderr_len > 0) {
 				nwarnf("Healthcheck command stderr: %s", stderr_buffer);
 			}
 			*exit_code = 128 + WTERMSIG(status); /* Standard convention for signal termination */
 			return true;
 		} else {
-			nwarnf("Healthcheck command did not terminate normally: %s", config->test);
+			nwarnf("Healthcheck command did not terminate normally: %s", config->test[0]);
 			if (stderr_len > 0) {
 				nwarnf("Healthcheck command stderr: %s", stderr_buffer);
 			}

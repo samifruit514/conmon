@@ -48,6 +48,7 @@ extern char *opt_sdnotify_socket;
 extern char *opt_seccomp_notify_socket;
 extern char *opt_seccomp_notify_plugins;
 extern char *opt_healthcheck_cmd;
+extern gchar **opt_healthcheck_args;
 extern int opt_healthcheck_interval;
 extern int opt_healthcheck_timeout;
 extern int opt_healthcheck_retries;

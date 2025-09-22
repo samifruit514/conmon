@@ -17,7 +17,7 @@ extern const char *healthcheck_status_strings[];
 
 /* Healthcheck configuration structure */
 typedef struct {
-	char *test;	  /* Healthcheck command string */
+	char **test;	  /* Healthcheck command array */
 	int interval;	  /* Interval between checks (seconds) */
 	int timeout;	  /* Timeout for each check (seconds) */
 	int start_period; /* Grace period before first failure counts (seconds) */

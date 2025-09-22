@@ -422,11 +422,42 @@ int main(int argc, char *argv[])
 		healthcheck_config_t config;
 		memset(&config, 0, sizeof(config));
 
-		/* Parse healthcheck command as single string */
-		config.test = strdup(opt_healthcheck_cmd);
-		if (config.test == NULL) {
-			pexit("Failed to duplicate healthcheck command string");
+		/* Parse healthcheck command and arguments into array */
+		/* Count total arguments: command + args + NULL terminator */
+		int argc = 1; // At least the command
+		if (opt_healthcheck_args != NULL) {
+			for (int i = 0; opt_healthcheck_args[i] != NULL; i++) {
+				argc++;
+			}
 		}
+		
+		/* Allocate array for command and arguments */
+		config.test = calloc(argc + 1, sizeof(char*));
+		if (config.test == NULL) {
+			pexit("Failed to allocate memory for healthcheck command");
+		}
+		
+		/* Copy command */
+		config.test[0] = strdup(opt_healthcheck_cmd);
+		if (config.test[0] == NULL) {
+			pexit("Failed to duplicate healthcheck command");
+		}
+		
+		/* Copy arguments */
+		if (opt_healthcheck_args != NULL) {
+			for (int i = 0; opt_healthcheck_args[i] != NULL; i++) {
+				config.test[i + 1] = strdup(opt_healthcheck_args[i]);
+				if (config.test[i + 1] == NULL) {
+					/* Clean up on error */
+					for (int j = 0; j <= i; j++) {
+						free(config.test[j]);
+					}
+					free(config.test);
+					pexit("Failed to duplicate healthcheck argument");
+				}
+			}
+		}
+		config.test[argc] = NULL; /* NULL terminator */
 
 		/* Set healthcheck parameters from CLI, using defaults for -1 values */
 		config.enabled = true;

@@ -115,3 +115,9 @@ EOF
     # Test passes if we get here without errors
     [ true ]
 }
+
+@test "healthcheck with command arguments" {
+    # Test healthcheck with command and arguments using new format
+    run $CONMON_BINARY --bundle /tmp --cid test --cuuid test --runtime /bin/true --log-path /tmp/test.log --healthcheck-cmd /bin/sh --healthcheck-arg -c --healthcheck-arg "echo hello world"
+    [ "$status" -eq 0 ]
+}

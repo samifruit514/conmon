@@ -58,6 +58,7 @@ gboolean opt_full_attach_path = FALSE;
 char *opt_seccomp_notify_socket = NULL;
 char *opt_seccomp_notify_plugins = NULL;
 char *opt_healthcheck_cmd = NULL;
+gchar **opt_healthcheck_args = NULL;
 int opt_healthcheck_interval = -1;
 int opt_healthcheck_timeout = -1;
 int opt_healthcheck_retries = -1;
@@ -124,6 +125,8 @@ GOptionEntry opt_entries[] = {
 	 "Plugins to use for managing the seccomp notifications", NULL},
 	{"healthcheck-cmd", 0, 0, G_OPTION_ARG_STRING, &opt_healthcheck_cmd,
 	 "Healthcheck command to execute", NULL},
+	{"healthcheck-arg", 0, 0, G_OPTION_ARG_STRING_ARRAY, &opt_healthcheck_args,
+	 "Healthcheck command arguments (can be used multiple times)", NULL},
 	{"healthcheck-interval", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_interval,
 	 "Healthcheck interval in seconds (default: 30)", NULL},
 	{"healthcheck-timeout", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_timeout,
@@ -223,7 +226,7 @@ void process_cli()
 
 	/* Validate healthcheck parameters - if any healthcheck options were provided without --healthcheck-cmd */
 	if (opt_healthcheck_cmd == NULL && (opt_healthcheck_interval != -1 || opt_healthcheck_timeout != -1 || 
-		opt_healthcheck_retries != -1 || opt_healthcheck_start_period != -1)) {
+		opt_healthcheck_retries != -1 || opt_healthcheck_start_period != -1 || opt_healthcheck_args != NULL)) {
 		nexit("Healthcheck parameters specified without --healthcheck-cmd. Please provide --healthcheck-cmd to enable healthcheck functionality.");
 	}
 }
