@@ -19,7 +19,6 @@ with pkgs; stdenv.mkDerivation rec {
   ] ++ [
     pkgsStatic.glib
     libseccomp
-    json_c
   ] ++ lib.optionals enableSystemd [
     # Only include systemd for dynamic builds, not static builds
     # Static builds will use PKG_CONFIG_PATH approach instead

@@ -34,7 +34,6 @@ add_project_arguments('-Os', '-Wall', '-Werror',
                       language : 'c')
 
 glib = dependency('glib-2.0')
-json_c = dependency('json-c')
 seccomp = dependency('libseccomp', version : '>= 2.5.2')
 if seccomp.found()
   add_project_arguments('-DUSE_SECCOMP=1', language : 'c')
@@ -88,7 +87,7 @@ executable('conmon',
             'src/utils.h',
             'src/seccomp_notify.c',
             'src/seccomp_notify.h'],
-           dependencies : [glib, json_c, libdl, sd_journal, seccomp],
+           dependencies : [glib, libdl, sd_journal, seccomp],
            install : true,
            install_dir : get_option('bindir'),
 )

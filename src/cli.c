@@ -57,7 +57,11 @@ char *opt_sdnotify_socket = NULL;
 gboolean opt_full_attach_path = FALSE;
 char *opt_seccomp_notify_socket = NULL;
 char *opt_seccomp_notify_plugins = NULL;
-gboolean opt_enable_healthcheck = FALSE;
+char *opt_healthcheck_cmd = NULL;
+int opt_healthcheck_interval = -1;
+int opt_healthcheck_timeout = -1;
+int opt_healthcheck_retries = -1;
+int opt_healthcheck_start_period = -1;
 GOptionEntry opt_entries[] = {
 	{"api-version", 0, 0, G_OPTION_ARG_NONE, &opt_api_version, "Conmon API version to use", NULL},
 	{"bundle", 'b', 0, G_OPTION_ARG_STRING, &opt_bundle_path, "Location of the OCI Bundle path", NULL},
@@ -118,8 +122,16 @@ GOptionEntry opt_entries[] = {
 	 "Path to the socket where the seccomp notification fd is received", NULL},
 	{"seccomp-notify-plugins", 0, 0, G_OPTION_ARG_STRING, &opt_seccomp_notify_plugins,
 	 "Plugins to use for managing the seccomp notifications", NULL},
-	{"enable-healthcheck", 0, 0, G_OPTION_ARG_NONE, &opt_enable_healthcheck,
-	 "Enable healthcheck functionality (for non-systemd environments)", NULL},
+	{"healthcheck-cmd", 0, 0, G_OPTION_ARG_STRING, &opt_healthcheck_cmd,
+	 "Healthcheck command to execute", NULL},
+	{"healthcheck-interval", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_interval,
+	 "Healthcheck interval in seconds (default: 30)", NULL},
+	{"healthcheck-timeout", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_timeout,
+	 "Healthcheck timeout in seconds (default: 30)", NULL},
+	{"healthcheck-retries", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_retries,
+	 "Number of consecutive failures before marking unhealthy (default: 3)", NULL},
+	{"healthcheck-start-period", 0, 0, G_OPTION_ARG_INT, &opt_healthcheck_start_period,
+	 "Start period in seconds before healthchecks start counting failures (default: 0)", NULL},
 	{NULL, 0, 0, 0, NULL, NULL, NULL}};
 
 
@@ -207,5 +219,11 @@ void process_cli()
 	/* Warn if --no-container-partial-message is used without journald logging */
 	if (opt_no_container_partial_message && !logging_is_journald_enabled()) {
 		nwarnf("--no-container-partial-message has no effect without journald log driver");
+	}
+
+	/* Validate healthcheck parameters - if any healthcheck options were provided without --healthcheck-cmd */
+	if (opt_healthcheck_cmd == NULL && (opt_healthcheck_interval != -1 || opt_healthcheck_timeout != -1 || 
+		opt_healthcheck_retries != -1 || opt_healthcheck_start_period != -1)) {
+		nexit("Healthcheck parameters specified without --healthcheck-cmd. Please provide --healthcheck-cmd to enable healthcheck functionality.");
 	}
 }

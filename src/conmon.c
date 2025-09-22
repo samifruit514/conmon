@@ -412,32 +412,45 @@ int main(int argc, char *argv[])
 	if ((opt_api_version >= 1 || !opt_exec) && sync_pipe_fd >= 0)
 		write_or_close_sync_fd(&sync_pipe_fd, container_pid, NULL);
 
-	/* Configure healthcheck - automatic discovery from OCI config.json */
-	/* Only start healthcheck timers if explicitly enabled via CLI flag */
-	if (opt_bundle_path != NULL && opt_enable_healthcheck) {
+	/* Start healthcheck timers if healthcheck command is provided */
+	if (opt_healthcheck_cmd != NULL) {
+		/* Initialize healthcheck subsystem only when needed */
+		if (!healthcheck_init()) {
+			pexit("Failed to initialize healthcheck subsystem");
+		}
+
 		healthcheck_config_t config;
 		memset(&config, 0, sizeof(config));
 
-		if (healthcheck_discover_from_oci_config(opt_bundle_path, &config)) {
-			healthcheck_timer_t *timer = healthcheck_timer_new(opt_cid, &config);
-			if (timer != NULL) {
-				if (healthcheck_timer_start(timer)) {
-					if (active_healthcheck_timers != NULL) {
-						hash_table_put(active_healthcheck_timers, opt_cid, timer);
-						ninfof("Started healthcheck for container %s", opt_cid);
-					} else {
-						nwarnf("Active healthcheck timers table is NULL");
-						healthcheck_timer_free(timer);
-					}
+		/* Parse healthcheck command as single string */
+		config.test = strdup(opt_healthcheck_cmd);
+		if (config.test == NULL) {
+			pexit("Failed to duplicate healthcheck command string");
+		}
+
+		/* Set healthcheck parameters from CLI, using defaults for -1 values */
+		config.enabled = true;
+		config.interval = opt_healthcheck_interval != -1 ? opt_healthcheck_interval : 30;
+		config.timeout = opt_healthcheck_timeout != -1 ? opt_healthcheck_timeout : 30;
+		config.retries = opt_healthcheck_retries != -1 ? opt_healthcheck_retries : 3;
+		config.start_period = opt_healthcheck_start_period != -1 ? opt_healthcheck_start_period : 0;
+
+		healthcheck_timer_t *timer = healthcheck_timer_new(opt_cid, &config);
+		if (timer != NULL) {
+			if (healthcheck_timer_start(timer)) {
+				if (active_healthcheck_timers != NULL) {
+					hash_table_put(active_healthcheck_timers, opt_cid, timer);
+					ninfof("Started healthcheck for container %s", opt_cid);
 				} else {
-					nwarnf("Failed to start healthcheck for container %s", opt_cid);
+					nwarnf("Active healthcheck timers table is NULL");
 					healthcheck_timer_free(timer);
 				}
 			} else {
-				nwarnf("Failed to create healthcheck timer for container %s", opt_cid);
+				nwarnf("Failed to start healthcheck for container %s", opt_cid);
+				healthcheck_timer_free(timer);
 			}
 		} else {
-			nwarnf("Failed to discover healthcheck config from OCI bundle");
+			nwarnf("Failed to create healthcheck timer for container %s", opt_cid);
 		}
 
 		/* Always free the config, regardless of success or failure */
